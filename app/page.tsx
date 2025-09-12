@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getSettings } from "./lib/settings";
+import { fmtNum, fmtPct } from "./lib/format";
 
 type Card = {
   kpi_id: string; name: string; channel?: string; unit?: string;
@@ -19,11 +20,8 @@ export default function Dashboard() {
       const r = await fetch(`/api/hachi/metrics/progress/workspace/${s.workspaceId}/${s.period}`);
       if (!r.ok) throw new Error("HTTP " + r.status);
       setData(await r.json());
-    } catch (e: any) {
-      setErr(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setErr(e.message); }
+    finally { setLoading(false); }
   }
 
   useEffect(() => { load(); }, []);
@@ -40,15 +38,26 @@ export default function Dashboard() {
   return (
     <div style={{display:"grid", gap:16, gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))", padding:16}}>
       {data.cards.map((c) => {
-        const pct = c.pct_of_target == null ? "—" : (c.pct_of_target).toFixed(1) + "%";
+        const pct = c.pct_of_target;
+        const pctText = fmtPct(pct, 1);
+        const width = pct == null ? "0%" : Math.max(0, Math.min(100, pct)).toFixed(1) + "%";
+        const barColor = pct == null ? "#e5e7eb" : (pct >= 100 ? "#10b981" : pct >= 70 ? "#f59e0b" : "#ef4444");
+
         return (
           <div key={c.kpi_id}
-               style={{padding:16, borderRadius:16, border:"1px solid #e5e7eb", background:"#fff"}}>
+               style={{padding:16, borderRadius:16, border:"1px solid #e5e7eb", background:"#fff", display:"grid", gap:8}}>
             <div style={{ color:"#6b7280", fontSize:12 }}>{c.channel}</div>
             <div style={{ fontWeight: 600 }}>{c.name}</div>
-            <div>Target: <b>{c.target}</b></div>
-            <div>Actual: <b>{c.actual}</b></div>
-            <div>Progress: <b>{pct}</b></div>
+
+            <div style={{display:"flex", gap:12}}>
+              <div>Target: <b>{fmtNum(c.target)}</b></div>
+              <div>Actual: <b>{fmtNum(c.actual)}</b></div>
+              <div>Progress: <b>{pctText}</b></div>
+            </div>
+
+            <div style={{height:8, borderRadius:999, background:"#f1f5f9", overflow:"hidden"}}>
+              <div style={{height:"100%", width, background: barColor, transition:"width .25s ease-out"}} />
+            </div>
           </div>
         );
       })}
