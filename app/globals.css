@@ -1,0 +1,4 @@
+/* minimal; add Tailwind later if you want */
+:root { color-scheme: light; }
+body { margin: 0; background:#f8fafc; color:#0a0a0a; font-family: ui-sans-serif, system-ui, -apple-system; }
+a { color: inherit; text-decoration: none; }
