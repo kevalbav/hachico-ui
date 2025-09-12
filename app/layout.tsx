@@ -1,4 +1,5 @@
 import "./globals.css";
+import Controls from "./components/Controls";
 
 export const metadata = {
   title: "Hachi-co",
@@ -19,6 +20,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <a href="/reports">Reports</a>
             </nav>
           </header>
+
+          <Controls />
           <main style={{ paddingTop: 12 }}>{children}</main>
         </div>
       </body>
