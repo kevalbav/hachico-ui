@@ -5,18 +5,24 @@ const KEY  = process.env.HACHI_API_KEY!;
 
 function buildURL(pathSegments: string[], req: NextRequest) {
   const path = pathSegments.join("/");
-  const search = req.nextUrl.search; // includes ?...
+  const search = req.nextUrl.search;
   return `${BASE}/${path}${search ?? ""}`;
 }
 
-async function forward(method: string, req: NextRequest, ctx: { params: { path: string[] } }) {
-  const url = buildURL(ctx.params.path, req);
+async function forward(method: string, req: NextRequest, pathSegments: string[]) {
+  const url = buildURL(pathSegments, req);
   const headers: Record<string, string> = { "x-api-key": KEY };
 
+  const ct = req.headers.get("content-type") || "";
   let body: BodyInit | undefined;
-  if (method !== "GET" && method !== "HEAD") {
-    const ct = req.headers.get("content-type") || "";
+
+  if (method === "GET" || method === "HEAD") {
+    // no body
+  } else if (ct.startsWith("multipart/form-data")) {
     headers["content-type"] = ct;
+    body = req.body as unknown as BodyInit;
+  } else {
+    if (ct) headers["content-type"] = ct;
     body = await req.text();
   }
 
@@ -27,5 +33,15 @@ async function forward(method: string, req: NextRequest, ctx: { params: { path: 
   });
 }
 
-export const GET  = (req: NextRequest, ctx: any) => forward("GET", req, ctx);
-export const POST = (req: NextRequest, ctx: any) => forward("POST", req, ctx);
+// Properly typed handlers (params is a Promise in route handlers)
+type Ctx = { params: Promise<{ path: string[] }> };
+
+export const GET  = async (req: NextRequest, ctx: Ctx) => {
+  const { path } = await ctx.params;
+  return forward("GET", req, path);
+};
+
+export const POST = async (req: NextRequest, ctx: Ctx) => {
+  const { path } = await ctx.params;
+  return forward("POST", req, path);
+};
