@@ -21,7 +21,7 @@ export default function ReferenceCornerPage() {
   const [references, setReferences] = useState<Reference[]>([]);
   const [loadingRefs, setLoadingRefs] = useState(true);
   const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
-  const [editingId, setEditingNoteId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   // Load references on page load
@@ -67,7 +67,7 @@ export default function ReferenceCornerPage() {
       });
       if (response.ok) {
         fetchReferences(); // Refresh the list
-        setEditingNoteId(null);
+        setEditingId(null);
       }
     } catch (error) {
       console.error('Update failed:', error);

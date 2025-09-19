@@ -75,8 +75,9 @@ export default function DayPage() {
   }, []);
 
   /* ---------- Data loaders (stable) ---------- */
-  const loadToday = useCallback(async () => {
-    const r = await fetch(`/api/hachi/day/today/${workspaceId}`);
+  const loadToday = useCallback(async () => {    
+    const url = `/api/hachi/day/today/${workspaceId}`;     
+    const r = await fetch(url);
     if (!r.ok) throw new Error("HTTP " + r.status);
     const data: DayResp = await r.json();
     setToday(data);
