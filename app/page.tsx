@@ -19,7 +19,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [youtubeStatus, setYoutubeStatus] = useState<{connected: boolean, external_account_id?: string} | null>(null);
+  const [instagramStatus, setInstagramStatus] = useState<{connected: boolean, external_account_id?: string, username?: string} | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [instagramSyncing, setInstagramSyncing] = useState(false);
 
   const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -33,6 +35,19 @@ export default function Dashboard() {
       }
     } catch (e) {
       console.warn("YouTube status failed:", e);
+    }
+  }
+
+  async function loadInstagramStatus() {
+    const s = getSettings();
+    try {
+      const r = await fetch(`/api/hachi/integrations/instagram/status?workspace_id=${s.workspaceId}`);
+      if (r.ok) {
+        const status = await r.json();
+        setInstagramStatus(status);
+      }
+    } catch (e) {
+      console.warn("Instagram status failed:", e);
     }
   }
 
@@ -55,10 +70,35 @@ export default function Dashboard() {
     }
   }
 
+  async function syncInstagram() {
+    const s = getSettings();
+    setInstagramSyncing(true);
+    try {
+      const r = await fetch(`/api/hachi/integrations/instagram/sync_profile?workspace_id=${s.workspaceId}`, {
+        method: "POST"
+      });
+      if (!r.ok) throw new Error(`Sync failed: ${r.status}`);
+      const result = await r.json();
+      console.log("Instagram sync result:", result);
+      // Reload dashboard data
+      await load();
+    } catch (e) {
+      alert(errMsg(e));
+    } finally {
+      setInstagramSyncing(false);
+    }
+  }
+
   async function connectYouTube() {
     const s = getSettings();
     // Redirect to OAuth flow
     window.location.href = `/api/hachi/oauth/youtube/start?workspace_id=${s.workspaceId}`;
+  }
+
+  async function connectInstagram() {
+    const s = getSettings();
+    // Redirect to OAuth flow
+    window.location.href = `/api/hachi/oauth/instagram/start?workspace_id=${s.workspaceId}`;
   }
 
 async function load() {
@@ -87,6 +127,7 @@ async function load() {
   useEffect(() => { 
     load(); 
     loadYouTubeStatus();
+    loadInstagramStatus();
   }, []);
   
   useEffect(() => {
@@ -100,54 +141,108 @@ async function load() {
 
   return (
     <div>
-      {/* YouTube Integration Section */}
-      <Card>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600 }}>YouTube Integration</h3>
-            <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 14 }}>
-              {youtubeStatus?.connected 
-                ? `Connected: ${youtubeStatus.external_account_id}`
-                : "Connect your YouTube channel to sync data"
-              }
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {youtubeStatus?.connected ? (
-              <button 
-                onClick={syncYouTube} 
-                disabled={syncing}
-                className="hc-btn-primary"
-              >
-                {syncing ? "Syncing..." : "Sync Data"}
-              </button>
-            ) : (
-              <button onClick={connectYouTube} className="hc-btn-primary">
-                Connect YouTube
-              </button>
-            )}
-          </div>
-        </div>
-      </Card>
+      {/* KPI Cards - Grouped by Platform */}
+      {(!data || data.cards.length === 0) ? (
+        <EmptyState 
+          youtubeStatus={youtubeStatus}
+          instagramStatus={instagramStatus}
+          connectYouTube={connectYouTube}
+          connectInstagram={connectInstagram}
+        />
+      ) : (
+        <div>
+          {/* Group cards by platform */}
+          {(() => {
+            const platformGroups = data.cards.reduce((groups, card) => {
+              const platform = card.channel || 'Other';
+              if (!groups[platform]) groups[platform] = [];
+              groups[platform].push(card);
+              return groups;
+            }, {} as Record<string, CardT[]>);
 
-      {/* KPI Cards */}
-      {(!data || data.cards.length === 0) ? <EmptyState /> : (
-        <div className="cards-grid">
-          {data.cards.map((c) => <KpiCard key={c.kpi_id} c={c} onSaved={load} />)}
+            return Object.entries(platformGroups).map(([platform, cards]) => (
+              <div key={platform} style={{ marginBottom: 32 }}>
+                <div style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  justifyContent: "space-between",
+                  marginBottom: 16,
+                  paddingBottom: 8,
+                  borderBottom: "1px solid #e2e8f0"
+                }}>
+                  <h2 style={{ 
+                    margin: 0, 
+                    fontSize: 20, 
+                    fontWeight: 600,
+                    color: "#1e293b"
+                  }}>
+                    {platform} Goals
+                  </h2>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {platform === 'YouTube' && youtubeStatus?.connected && (
+                      <button 
+                        onClick={syncYouTube} 
+                        disabled={syncing}
+                        className="hc-btn-ghost"
+                        style={{ fontSize: 14 }}
+                      >
+                        {syncing ? "Syncing..." : "Sync Data"}
+                      </button>
+                    )}
+                    {platform === 'Instagram' && instagramStatus?.connected && (
+                      <button 
+                        onClick={syncInstagram} 
+                        disabled={instagramSyncing}
+                        className="hc-btn-ghost"
+                        style={{ fontSize: 14 }}
+                      >
+                        {instagramSyncing ? "Syncing..." : "Sync Data"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="cards-grid">
+                  {cards.map((c) => <KpiCard key={c.kpi_id} c={c} onSaved={load} />)}
+                </div>
+              </div>
+            ));
+          })()}
         </div>
       )}
     </div>
   );
 }
 
-function EmptyState() {
+function EmptyState({ 
+  youtubeStatus, 
+  instagramStatus, 
+  connectYouTube, 
+  connectInstagram 
+}: {
+  youtubeStatus: {connected: boolean, external_account_id?: string} | null;
+  instagramStatus: {connected: boolean, external_account_id?: string, username?: string} | null;
+  connectYouTube: () => void;
+  connectInstagram: () => void;
+}) {
   return (
     <Card>
       <div style={{ textAlign:"center", padding:32 }}>
         <div style={{ margin:"0 auto 12px", width:48, height:48, display:"flex", alignItems:"center", justifyContent:"center", borderRadius:16, background:"rgb(252,231,243)" }}>🐶</div>
         <h3 style={{ margin:"0 0 4px", fontSize:18, fontWeight:600 }}>No KPIs yet</h3>
-        <p style={{ margin:"0 0 16px", color:"#64748b", fontSize:14 }}>Connect YouTube and sync data, or add KPIs manually.</p>
-        <a className="hc-btn-primary" href="/kpis/add">Add KPIs</a>
+        <p style={{ margin:"0 0 16px", color:"#64748b", fontSize:14 }}>Get started by connecting your social media accounts or adding KPIs manually.</p>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+          {!youtubeStatus?.connected && (
+            <button onClick={connectYouTube} className="hc-btn-primary">
+              Connect YouTube
+            </button>
+          )}
+          {!instagramStatus?.connected && (
+            <button onClick={connectInstagram} className="hc-btn-primary">
+              Connect Instagram
+            </button>
+          )}
+          <a className="hc-btn-ghost" href="/kpis/add">Add KPIs Manually</a>
+        </div>
       </div>
     </Card>
   );

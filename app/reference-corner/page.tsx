@@ -8,6 +8,7 @@ interface Reference {
   url: string;
   note: string | null;
   title: string | null;
+  thumbnail: string | null;
   platform: string | null;
   tags: string[];
   created_at: string;
@@ -21,8 +22,10 @@ export default function ReferenceCornerPage() {
   const [references, setReferences] = useState<Reference[]>([]);
   const [loadingRefs, setLoadingRefs] = useState(true);
   const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [tagCategories, setTagCategories] = useState<Record<string, string[]>>({});
 
   // Load references on page load
   const fetchReferences = async () => {
@@ -52,9 +55,23 @@ export default function ReferenceCornerPage() {
     }
   };
 
+  // Load tag categories
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch('/api/hachi/references/categories');
+      if (response.ok) {
+        const result = await response.json();
+        setTagCategories(result.categories || {});
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
+
   useEffect(() => {
     fetchReferences();
     fetchTags();
+    fetchCategories();
   }, []);
 
   // Update reference tags/note
@@ -67,7 +84,7 @@ export default function ReferenceCornerPage() {
       });
       if (response.ok) {
         fetchReferences(); // Refresh the list
-        setEditingId(null);
+        setEditingNoteId(null);
       }
     } catch (error) {
       console.error('Update failed:', error);
@@ -77,10 +94,20 @@ export default function ReferenceCornerPage() {
   // Get unique platforms for filter buttons
   const platforms = Array.from(new Set(references.map(ref => ref.platform).filter((platform): platform is string => Boolean(platform))));
   
-  // Filter references by selected platform
-  const filteredReferences = selectedPlatform === 'all' 
-    ? references 
-    : references.filter(ref => ref.platform === selectedPlatform);
+  // Filter references by selected platform and category
+  const filteredReferences = references.filter(ref => {
+    // Platform filter
+    const platformMatch = selectedPlatform === 'all' || ref.platform === selectedPlatform;
+    
+    // Category filter
+    let categoryMatch = true;
+    if (selectedCategory !== 'all') {
+      const categoryTags = tagCategories[selectedCategory] || [];
+      categoryMatch = ref.tags && ref.tags.some(tag => categoryTags.includes(tag));
+    }
+    
+    return platformMatch && categoryMatch;
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -233,7 +260,7 @@ export default function ReferenceCornerPage() {
                   transition: 'all 0.2s'
                 } as React.CSSProperties}
               >
-                All ({references.length})
+                All Platforms ({references.length})
               </button>
               {platforms.map(platform => (
                 <button
@@ -270,6 +297,72 @@ export default function ReferenceCornerPage() {
                 </button>
               ))}
             </div>
+
+           {/* Category Filter Pills */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+            <span style={{ color: 'var(--warm-text-secondary)', fontSize: '12px', fontWeight: 600, marginRight: '8px' }}>
+              Filter by Category:
+            </span>
+            <button
+              onClick={() => setSelectedCategory('all')}
+              style={{
+                borderRadius: '16px',
+                padding: '4px 12px',
+                fontSize: '12px',
+                fontWeight: 500,
+                border: selectedCategory === 'all' ? '1px solid var(--warm-accent)' : '1px solid var(--warm-border)',
+                cursor: 'pointer',
+                background: selectedCategory === 'all' ? '#fff78a22' : '#ffffff',
+                color: 'var(--warm-text-primary)',
+                transition: 'all 0.2s'
+              } as React.CSSProperties}
+            >
+              All
+            </button>
+            {Object.keys(tagCategories)
+              .filter(category => {
+                const categoryTags = tagCategories[category] || [];
+                // Calculate count based on platform-filtered references
+                const platformFilteredRefs = references.filter(ref => 
+                  selectedPlatform === 'all' || ref.platform === selectedPlatform
+                );
+                const categoryCount = platformFilteredRefs.filter(ref => 
+                  ref.tags && ref.tags.some(tag => categoryTags.includes(tag))
+                ).length;
+                return categoryCount > 0; // Only show categories that have references in current platform filter
+              })
+              .map(category => {
+                const categoryTags = tagCategories[category] || [];
+                // Calculate count based on platform-filtered references
+                const platformFilteredRefs = references.filter(ref => 
+                  selectedPlatform === 'all' || ref.platform === selectedPlatform
+                );
+                const categoryCount = platformFilteredRefs.filter(ref => 
+                  ref.tags && ref.tags.some(tag => categoryTags.includes(tag))
+                ).length;
+                
+                return (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedCategory(category)}
+                    style={{
+                      borderRadius: '16px',
+                      padding: '4px 12px',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      border: selectedCategory === category ? '1px solid var(--warm-accent)' : '1px solid var(--warm-border)',
+                      cursor: 'pointer',
+                      background: selectedCategory === category ? '#fff78a22' : '#ffffff',
+                      color: 'var(--warm-text-primary)',
+                      transition: 'all 0.2s'
+                    } as React.CSSProperties}
+                  >
+                    {category} ({categoryCount})
+                  </button>
+                );
+              })}
+          </div>
+
           </div>
         
         <div style={{ padding: '24px' }}>
@@ -293,172 +386,290 @@ export default function ReferenceCornerPage() {
               <p style={{ color: 'var(--warm-text-secondary)', fontSize: '14px' }}>Start building your inspiration library above!</p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: '16px' }}>
+            <div style={{ display: 'grid', gap: '20px', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
               {filteredReferences.map((ref) => (
                 <div key={ref.id} style={{ 
                   border: '1px solid var(--warm-border)', 
                   borderRadius: '12px', 
-                  padding: '16px'
+                  overflow: 'hidden',
+                  background: 'var(--warm-card)',
+                  boxShadow: 'var(--shadow-card)',
+                  transition: 'transform 0.2s',
+                  cursor: 'pointer',
+                  position: 'relative'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                    <div style={{ 
-                      width: '12px', 
-                      height: '12px', 
-                      borderRadius: '50%', 
-                      marginTop: '4px',
-                      backgroundColor: 
-                        ref.platform === 'youtube' ? '#ff0000' :
-                        ref.platform === 'instagram' ? '#E4405F' :
-                        ref.platform === 'tiktok' ? '#000000' :
-                        ref.platform === 'twitter' ? '#1DA1F2' :
-                        ref.platform === 'linkedin' ? '#0077B5' :
-                        'var(--warm-text-secondary)'
-                    }}></div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <a 
-                        href={ref.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        style={{ 
-                          color: 'var(--warm-text-primary)', 
-                          fontWeight: 600, 
-                          textDecoration: 'none',
-                          display: 'block',
-                          marginBottom: '4px',
-                          wordBreak: 'break-word'
-                        } as React.CSSProperties}
-                        onMouseOver={(e) => (e.target as HTMLAnchorElement).style.textDecoration = 'underline'}
-                        onMouseOut={(e) => (e.target as HTMLAnchorElement).style.textDecoration = 'none'}
-                      >
-                        {ref.url.length > 60 ? `${ref.url.substring(0, 60)}...` : ref.url}
-                      </a>
-                      
-                      {/* Editable Note */}
-                      {editingId === ref.id ? (
-                        <input
-                          type="text"
-                          defaultValue={ref.note || ''}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              updateReference(ref.id, {note: e.currentTarget.value});
-                            } else if (e.key === 'Escape') {
-                              setEditingId(null);
-                            }
-                          }}
-                          onBlur={(e) => updateReference(ref.id, {note: e.currentTarget.value})}
-                          autoFocus
-                          style={{ 
-                            fontSize: '14px', 
-                            margin: '0 0 8px 0',
-                            padding: '4px 8px',
-                            border: '1px solid var(--warm-accent)',
-                            borderRadius: '4px',
-                            width: '100%'
-                          } as React.CSSProperties}
-                        />
-                      ) : (
-                        <p 
-                          onClick={() => setEditingId(ref.id)}
-                          style={{ 
-                            color: 'var(--warm-text-primary)', 
-                            fontSize: '14px', 
-                            margin: '0 0 8px 0',
-                            lineHeight: '1.5',
-                            cursor: 'pointer',
-                            padding: '4px 8px',
-                            borderRadius: '4px',
-                            background: ref.note ? 'transparent' : '#f8f8f8',
-                            border: '1px solid transparent'
-                          } as React.CSSProperties}
-                        >
-                          {ref.note || 'Click to add note...'}
-                        </p>
-                      )}
 
-                      {/* Tags Section */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--warm-text-secondary)', flexWrap: 'wrap' }}>
-                        {/* Platform Tag */}
-                        <span style={{ 
+                   {/* Delete Button */}
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (confirm('Are you sure you want to delete this reference?')) {
+                          try {
+                            const response = await fetch(`/api/hachi/references/${ref.id}`, {
+                              method: 'DELETE',
+                            });
+                            if (response.ok) {
+                              fetchReferences(); // Refresh the list
+                            }
+                          } catch (error) {
+                            console.error('Delete failed:', error);
+                          }
+                        }
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        left: '8px',
+                        background: 'rgba(0, 0, 0, 0.6)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: '28px',
+                        height: '28px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: 0.8,
+                        transition: 'all 0.2s ease',
+                        zIndex: 10,
+                        backdropFilter: 'blur(4px)'
+                      } as React.CSSProperties}
+                      onMouseOver={(e) => {
+                        (e.target as HTMLButtonElement).style.opacity = '1';
+                        (e.target as HTMLButtonElement).style.background = 'rgba(220, 38, 38, 0.9)';
+                      }}
+                      onMouseOut={(e) => {
+                        (e.target as HTMLButtonElement).style.opacity = '0';
+                        (e.target as HTMLButtonElement).style.background = 'rgba(0, 0, 0, 0.6)';
+                      }}
+                      title="Delete reference"
+                    >
+                        x
+                </button>
+                  {/* Thumbnail Section */}
+                  {ref.thumbnail ? (
+                    <div style={{ position: 'relative', height: '180px', overflow: 'hidden' }}>
+                      <img 
+                        src={ref.thumbnail} 
+                        alt={ref.title || 'Reference thumbnail'}
+                        style={{ 
+                          width: '100%', 
+                          height: '100%', 
+                          objectFit: 'cover'
+                        }}
+                        onError={(e) => {
+                          // Hide image if it fails to load
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                      {/* Platform badge */}
+                      <div style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        background: 'rgba(0,0,0,0.7)',
+                        color: 'white',
+                        padding: '4px 8px',
+                        borderRadius: '999px',
+                        fontSize: '11px',
+                        fontWeight: 600
+                      }}>
+                        {ref.platform}
+                      </div>
+                    </div>
+                  ) : (
+                    // Fallback for no thumbnail
+                    <div style={{ 
+                      height: '120px', 
+                      background: 'linear-gradient(135deg, #f3f3ef 0%, #e8e8e0 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative'
+                    }}>
+                      <div style={{ 
+                        width: '48px', 
+                        height: '48px', 
+                        borderRadius: '50%',
+                        backgroundColor: 
+                          ref.platform === 'youtube' ? '#ff0000' :
+                          ref.platform === 'instagram' ? '#E4405F' :
+                          ref.platform === 'tiktok' ? '#000000' :
+                          ref.platform === 'twitter' ? '#1DA1F2' :
+                          ref.platform === 'linkedin' ? '#0077B5' :
+                          'var(--warm-text-secondary)'
+                      }}></div>
+                      <div style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        background: 'rgba(0,0,0,0.7)',
+                        color: 'white',
+                        padding: '4px 8px',
+                        borderRadius: '999px',
+                        fontSize: '11px',
+                        fontWeight: 600
+                      }}>
+                        {ref.platform}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Content Section */}
+                  <div style={{ padding: '16px' }}>
+                    {/* Title */}
+                    <a 
+                      href={ref.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ 
+                        color: 'var(--warm-text-primary)', 
+                        fontWeight: 700, 
+                        textDecoration: 'none',
+                        display: 'block',
+                        marginBottom: '8px',
+                        fontSize: '16px',
+                        lineHeight: '1.3'
+                      } as React.CSSProperties}
+                      onMouseOver={(e) => (e.target as HTMLAnchorElement).style.textDecoration = 'underline'}
+                      onMouseOut={(e) => (e.target as HTMLAnchorElement).style.textDecoration = 'none'}
+                    >
+                    {ref.title || `${ref.url.substring(0, 50)}${ref.url.length > 50 ? '...' : ''}`}                    </a>
+
+                    {/* URL */}
+                    <p style={{ 
+                      color: 'var(--warm-text-secondary)', 
+                      fontSize: '12px', 
+                      margin: '0 0 12px 0',
+                      wordBreak: 'break-all'
+                    }}>
+                      {ref.url.length > 60 ? `${ref.url.substring(0, 60)}...` : ref.url}
+                    </p>
+                    
+                    {/* Editable Note */}
+                    {editingNoteId === ref.id ? (
+                      <input
+                        type="text"
+                        defaultValue={ref.note || ''}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            updateReference(ref.id, {note: e.currentTarget.value});
+                          } else if (e.key === 'Escape') {
+                            setEditingNoteId(null);
+                          }
+                        }}
+                        onBlur={(e) => updateReference(ref.id, {note: e.currentTarget.value})}
+                        autoFocus
+                        style={{ 
+                          fontSize: '14px', 
+                          margin: '0 0 12px 0',
+                          padding: '8px',
+                          border: '1px solid var(--warm-accent)',
+                          borderRadius: '6px',
+                          width: '100%',
+                          boxSizing: 'border-box'
+                        } as React.CSSProperties}
+                      />
+                    ) : (
+                      <p 
+                        onClick={() => setEditingNoteId(ref.id)}
+                        style={{ 
+                          color: ref.note ? 'var(--warm-text-primary)' : 'var(--warm-text-secondary)', 
+                          fontSize: '14px', 
+                          margin: '0 0 12px 0',
+                          lineHeight: '1.4',
+                          cursor: 'pointer',
+                          padding: '8px',
+                          borderRadius: '6px',
+                          background: ref.note ? 'transparent' : '#f8f8f8',
+                          border: '1px solid transparent',
+                          fontStyle: ref.note ? 'normal' : 'italic'
+                        } as React.CSSProperties}
+                      >
+                        {ref.note || 'Click to add note...'}
+                      </p>
+                    )}
+
+                    {/* Tags Section */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                      {/* User Tags with Remove */}
+                      {ref.tags && ref.tags.length > 0 && ref.tags.map(tag => (
+                        <span key={tag} style={{
                           display: 'inline-flex',
                           alignItems: 'center',
-                          gap: '8px',
+                          gap: '4px',
+                          borderRadius: '999px',
+                          padding: '4px 8px',
+                          fontSize: '11px',
+                          background: '#fff78a33',
+                          color: 'var(--warm-text-primary)',
+                          border: '1px solid var(--warm-accent)'
+                        }}>
+                          {tag}
+                          <button
+                            onClick={() => {
+                              const newTags = ref.tags.filter(t => t !== tag);
+                              updateReference(ref.id, {tags: newTags});
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--warm-text-secondary)',
+                              cursor: 'pointer',
+                              padding: '0',
+                              marginLeft: '2px',
+                              fontSize: '12px',
+                              lineHeight: '1'
+                            } as React.CSSProperties}
+                            title="Remove tag"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                      
+                      {/* Add Tag Dropdown */}
+                      <select
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            const currentTags = ref.tags || [];
+                            if (!currentTags.includes(e.target.value)) {
+                              updateReference(ref.id, {tags: [...currentTags, e.target.value]});
+                            }
+                            e.target.value = ''; // Reset dropdown
+                          }
+                        }}
+                        style={{
+                          background: 'white',
+                          border: '1px solid var(--warm-border)',
                           borderRadius: '999px',
                           padding: '4px 8px',
                           fontSize: '11px',
                           color: 'var(--warm-text-secondary)',
-                          background: '#f3f3ef'
-                        }}>
-                          {ref.platform}
-                        </span>
-                        
-                        {/* User Tags with Remove */}
-                        {ref.tags && ref.tags.length > 0 && ref.tags.map(tag => (
-                          <span key={tag} style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            borderRadius: '999px',
-                            padding: '3px 8px',
-                            fontSize: '11px',
-                            background: '#fff78a33',
-                            color: 'var(--warm-text-primary)',
-                            border: '1px solid var(--warm-accent)'
-                          }}>
-                            {tag}
-                            <button
-                              onClick={() => {
-                                const newTags = ref.tags.filter(t => t !== tag);
-                                updateReference(ref.id, {tags: newTags});
-                              }}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: 'var(--warm-text-secondary)',
-                                cursor: 'pointer',
-                                padding: '0',
-                                marginLeft: '2px',
-                                fontSize: '12px',
-                                lineHeight: '1'
-                              } as React.CSSProperties}
-                              title="Remove tag"
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
-                        
-                        {/* Add Tag Dropdown */}
-                        <select
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              const currentTags = ref.tags || [];
-                              if (!currentTags.includes(e.target.value)) {
-                                updateReference(ref.id, {tags: [...currentTags, e.target.value]});
-                              }
-                              e.target.value = ''; // Reset dropdown
-                            }
-                          }}
-                          style={{
-                            background: 'white',
-                            border: '1px solid var(--warm-border)',
-                            borderRadius: '999px',
-                            padding: '3px 8px',
-                            fontSize: '11px',
-                            color: 'var(--warm-text-secondary)',
-                            cursor: 'pointer'
-                          } as React.CSSProperties}
-                        >
-                          <option value="">+ add tag</option>
-                          {availableTags
-                            .filter(tag => !ref.tags?.includes(tag))
-                            .map(tag => (
-                              <option key={tag} value={tag}>{tag}</option>
-                            ))}
-                        </select>
-                        
-                        <span>{new Date(ref.created_at).toLocaleDateString()}</span>
-                      </div>
+                          cursor: 'pointer'
+                        } as React.CSSProperties}
+                      >
+                        <option value="">+ tag</option>
+                        {availableTags
+                          .filter(tag => !ref.tags?.includes(tag))
+                          .map(tag => (
+                            <option key={tag} value={tag}>{tag}</option>
+                          ))}
+                      </select>
                     </div>
+
+                    {/* Date */}
+                    <p style={{ 
+                      color: 'var(--warm-text-secondary)', 
+                      fontSize: '11px', 
+                      margin: 0,
+                      textAlign: 'right'
+                    }}>
+                      {new Date(ref.created_at).toLocaleDateString()}
+                    </p>
+
                   </div>
                 </div>
               ))}
